@@ -48,21 +48,21 @@ def test_model_on_test_set(model_identifier):
     }
 
 def save_model_results(results):
-    """保存单个模型的完整结果"""
+    """Save complete results for a single model."""
     model_identifier = results['model_identifier']
     model_type = results['model_type']
     m = results['metrics']
     r = {}
     mapper = results['mapper']
 
-    # 使用统一的路径函数
+    # Use unified path function
     model_test_dir = get_test_save_dir(model_identifier)
 
-    # ========== 7. 绘制数据集分布图（稳健方案） ==========
+    # ========== Plot dataset distribution ==========
     try:
         evaluator = ModelEvaluator(mapper)
 
-        # 从 metadata.json 读取标签分布
+        # Read label distribution from metadata.json
         model_dir = os.path.join(MODELS_DIR, model_identifier)
         metadata_path = os.path.join(model_dir, 'metadata.json')
 
@@ -70,12 +70,12 @@ def save_model_results(results):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
 
-            # 从 label_distribution 读取
+            # Read from label_distribution
             label_dist = metadata.get('label_distribution', {})
             train_dist = label_dist.get('train', {})
             val_dist = label_dist.get('val', {})
 
-            # 方法1：如果有保存的原始标签数组，直接使用
+            # Method 1: use saved label arrays if available
             y_train = None
             y_val = None
 
@@ -84,7 +84,7 @@ def save_model_results(results):
                 y_val = np.array(val_dist['labels'])
                 logger.info(f"Using saved labels: train={len(y_train)}, val={len(y_val)}")
             else:
-                # 方法2：从 counts 重建标签数组
+                # Method 2: reconstruct labels from counts
                 train_counts = train_dist.get('counts', {})
                 val_counts = val_dist.get('counts', {})
 
@@ -103,7 +103,7 @@ def save_model_results(results):
             if y_train is not None and y_val is not None and len(y_train) > 0 and len(y_val) > 0:
                 y_test = results['y_true']
 
-                # 绘制分布图
+                # Plot distribution
                 dist_path = os.path.join(model_test_dir, 'dataset_distribution.svg')
                 evaluator.plot_dataset_distribution(
                     y_train=y_train,
@@ -119,7 +119,7 @@ def save_model_results(results):
     except Exception as e:
         logger.warning(f"Could not plot dataset distribution: {e}")
 
-    # 1. 每类指标CSV
+    # 1. Per-class metrics CSV
     per_class_data = []
     for cls in range(mapper.num_classes):
         cls_str = str(cls)
@@ -137,7 +137,7 @@ def save_model_results(results):
     df_per_class = pd.DataFrame(per_class_data)
     df_per_class.to_csv(os.path.join(model_test_dir, 'per_class_metrics.csv'), index=False)
 
-    # 2. 整体指标JSON
+    # 2. Overall metrics JSON
     overall_metrics = {
         'model': model_identifier,
         'model_type': model_type.upper(),
@@ -148,7 +148,7 @@ def save_model_results(results):
     with open(os.path.join(model_test_dir, 'overall_metrics.json'), 'w') as f:
         json.dump(overall_metrics, f, indent=2)
 
-    # 2.5. 文本评估报告
+    # 2.5. Text evaluation report
     report_path = os.path.join(model_test_dir, 'evaluation_report_test.txt')
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("=" * 70 + "\n")
@@ -170,7 +170,7 @@ def save_model_results(results):
                         f"F1={rep['f1-score']:.3f} Support={int(rep['support'])}\n")
     logger.info(f"Evaluation report saved to: {report_path}")
 
-    # 3. 混淆矩阵图
+    # 3. Confusion matrix
     evaluator = ModelEvaluator(mapper)
     evaluator.plot_confusion_matrix(
         results['y_true'], results['y_pred'],
@@ -178,11 +178,11 @@ def save_model_results(results):
         save_path=os.path.join(model_test_dir, 'confusion_matrix_test.svg')
     )
 
-    # 4. ROC和PR曲线
+    # 4. ROC and PR curves
     try:
         y_proba = results.get('y_proba')
         if y_proba is None:
-            model = results.get('model')  # 需要从外部传入
+            model = results.get('model')  # may need external injection
             if model:
                 y_proba = model.predict_proba(results['X_test'])
         if y_proba is not None:
@@ -199,7 +199,7 @@ def save_model_results(results):
     except Exception:
         pass
 
-    # 5. 拒绝样本分布
+    # 5. Rejected sample distribution
     if r and r.get('rejected_classes'):
         rejected_data = []
         for cls, count in sorted(r['rejected_classes'].items(), key=lambda x: -x[1]):
@@ -214,14 +214,14 @@ def save_model_results(results):
     return overall_metrics, per_class_data
 
 def plot_model_comparison(summary_df, save_dir):
-    """绘制模型对比图 - 分成两个独立图表"""
+    """Plot model comparison charts."""
     import matplotlib.pyplot as plt
 
     models_list = summary_df['Model'].tolist()
     x = np.arange(len(models_list))
     width = 0.3
 
-    # ========== 图1：基础指标对比 ==========
+    # ========== Chart 1: Basic metrics comparison ==========
     fig1, ax1 = plt.subplots(figsize=(10, 6))
 
     acc_values = [float(v) for v in summary_df['Accuracy']]
@@ -230,7 +230,7 @@ def plot_model_comparison(summary_df, save_dir):
     bars_acc = ax1.bar(x - width / 2, acc_values, width, label='Accuracy', color='#2E86AB', edgecolor='white')
     bars_f1 = ax1.bar(x + width / 2, f1_values, width, label='Macro F1', color='#A23B72', edgecolor='white')
 
-    # 在柱子上标注数值
+    # Annotate values on bars
     for bar in bars_acc:
         height = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width() / 2., height + 0.01,
@@ -256,16 +256,16 @@ def plot_model_comparison(summary_df, save_dir):
     print(f"Performance comparison plot saved to: {save_path1}")
 
 def check_data_distribution():
-    """检查训练集和测试集的数据分布一致性"""
+    """Check data distribution consistency between train and test sets."""
     from collections import Counter
     from test_model import load_model_resources, prepare_test_data
     from pathlib import Path
 
-    # 加载一个模型获取预处理参数
+    # Load one model to get preprocessing parameters
     model_id = 'RCL-ProtoNet'
     model, info, config, mapper, preprocessor, model_type = load_model_resources(model_id)
 
-    # 加载测试数据
+    # Load test data
     test_source = str(Path(__file__).parent.parent / 'data')
     X_test, y_test = prepare_test_data(test_source, mapper, preprocessor, config, info)
 
@@ -273,17 +273,17 @@ def check_data_distribution():
     print("DATA DISTRIBUTION CHECK")
     print("=" * 70)
 
-    # 1. 样本数对比
+    # 1. Sample count comparison
     y_train_counts = config.get('training_distribution', {})
     y_test_counts = dict(Counter(y_test))
 
-    print(f"\n1. 样本数量")
-    print(f"   训练集总样本: {sum(y_train_counts.values()) if y_train_counts else 'N/A'}")
-    print(f"   测试集总样本: {len(y_test)}")
+    print(f"\n1. Sample Count")
+    print(f'   Train total: {sum(y_train_counts.values()) if y_train_counts else "N/A"}')
+    print(f'   Test total: {len(y_test)}')
 
-    # 2. 类别分布对比
-    print(f"\n2. 类别分布")
-    print(f"   {'Class':<8s} {'训练集':>10s} {'测试集':>10s} {'差异':>10s}")
+    # 2. Class distribution comparison
+    print(f"\n2. Class Distribution")
+    print(f"   {'Class':<8s} {'Train':>10s} {'Test':>10s} {'Diff':>10s}")
     print(f"   {'-' * 40}")
 
     all_classes = sorted(set(list(y_train_counts.keys()) + list(y_test_counts.keys())))
@@ -294,31 +294,31 @@ def check_data_distribution():
         flag = "⚠️" if diff > 0.1 else "  "
         print(f"   {cls:<8d} {train_pct:>10.2%} {test_pct:>10.2%} {diff:>10.2%} {flag}")
 
-    # 3. 特征统计
-    print(f"\n3. 特征统计（标准化后）")
-    print(f"   测试集 X mean: {X_test.mean():.4f}")
-    print(f"   测试集 X std:  {X_test.std():.4f}")
-    print(f"   测试集 X min:  {X_test.min():.4f}")
-    print(f"   测试集 X max:  {X_test.max():.4f}")
+    # 3. Feature statistics
+    print(f"\n3. Feature Statistics (standardized)")
+    print(f'   Test X mean: {X_test.mean():.4f}')
+    print(f'   Test X std:  {X_test.std():.4f}')
+    print(f'   Test X min:  {X_test.min():.4f}')
+    print(f'   Test X max:  {X_test.max():.4f}')
 
-    # 注意：训练集统计没有直接保存，可以检查scaler参数
+    # Note: train statistics not directly saved; check scaler params
     if info.get('scaler_mean') is not None:
-        print(f"\n   训练集 scaler mean 前5维: {info['scaler_mean'][:5]}")
-        print(f"   训练集 scaler std  前5维: {info['scaler_scale'][:5]}")
+        print(f"\n   Train scaler mean (first 5): {info['scaler_mean'][:5]}")
+        print(f"   Train scaler std  (first 5): {info['scaler_scale'][:5]}")
 
-    # 4. 窗口参数检查
+    # 4. Window parameter check
     print(f"\n4. 序列参数")
-    print(f"   训练集 window_size: {config.get('window_size', 'N/A')}")
-    print(f"   训练集 stride: {config.get('stride', 'N/A')}")
-    print(f"   测试集 window_size: {config.get('window_size', 'N/A')}")
-    print(f"   测试集 stride: {config.get('stride', 'N/A')}")
-    print(f"   测试集 X shape: {X_test.shape}")
+    print(f"   Train window_size: {config.get('window_size', 'N/A')}")
+    print(f"   Train stride: {config.get('stride', 'N/A')}")
+    print(f"   Test window_size: {config.get('window_size', 'N/A')}")
+    print(f"   Test stride: {config.get('stride', 'N/A')}")
+    print(f'   Test X shape: {X_test.shape}')
 
 
 def plot_pr_comparison_overlap(results_dict, save_dir):
     """
-    绘制高重叠类别的PR曲线对比
-    方法演进: ProtoNet → ProtoNet+Focal → RGuided → RCL-ProtoNet
+    Plot PR curve comparison for high-overlap classes
+    Method progression: ProtoNet -> RGuided -> RCL-ProtoNet
     """
 
     protonet_key = None
@@ -374,7 +374,7 @@ def plot_pr_comparison_overlap(results_dict, save_dir):
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     class_names = ['Class 3 (Gyroscope)', 'Class 5 (Magnetometer)', 'Class 6 (GPS)']
 
-    # 方法演进: 无引导 → 通用代价敏感 → R矩阵加权 → R矩阵对比学习
+    # Method progression: no guidance -> R-weighted -> contrastive
     configs = [
         (y_proba_protonet,        '#ff7f0e', '-.', 'ProtoNet'),
         (y_proba_protonet_focal,  '#2ca02c', '-',  'ProtoNet$_{Focal}$'),
@@ -443,7 +443,7 @@ def main():
     comparison_dir = TEST_COMPARISON_DIR
     os.makedirs(comparison_dir, exist_ok=True)
 
-    # ========== 添加：数据分布检查 ==========
+    # ========== Data distribution check ==========
     check_data_distribution()
     all_result_dict = {}
 
@@ -483,7 +483,7 @@ def main():
     plot_pr_comparison_overlap(all_result_dict, comparison_dir)
 
 
-    # 汇总
+    # Summary
     if summary:
         df = pd.DataFrame(summary)
         csv_path = os.path.join(comparison_dir, 'model_comparison.csv')

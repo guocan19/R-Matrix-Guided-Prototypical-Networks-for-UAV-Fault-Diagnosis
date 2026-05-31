@@ -13,7 +13,7 @@ import glob
 import logging
 from pathlib import Path
 import numpy as np
-# ========== 路径设置（必须在导入 src 之前） ==========
+# ========== Path Setup (must be before src imports) ==========
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(PROJECT_ROOT))
 from src.config import get_test_save_dir
@@ -24,7 +24,7 @@ from src.evaluation.model_evaluator import ModelEvaluator
 from sklearn.preprocessing import StandardScaler
 import src.config as cfg
 
-# 强制设置正确的输出目录
+# Force correct output directory
 cfg.PROJECT_ROOT = PROJECT_ROOT
 cfg.RESULT_DIR = str(PROJECT_ROOT / 'outputs')
 cfg.MODELS_DIR = str(PROJECT_ROOT / 'outputs' / 'models')
@@ -35,21 +35,21 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-# ==================== 1. 路径查找 ====================
+# ==================== 1. Path Resolution ====================
 
 def find_model_files(model_identifier: str) -> dict:
-    """自动查找模型相关文件
+    """Auto-locate model-related files.
     Args:
-        model_identifier: 模型目录名，如 '1_CNN', '2_ResNet', 'C_RCL-ProtoNet'
+        model_identifier: model directory name, e.g., '1_CNN', '2_ResNet', 'C_RCL-ProtoNet'
     """
     if not os.path.exists(MODELS_DIR):
         raise FileNotFoundError(f"Models directory not found: {MODELS_DIR}")
 
-    # 直接查找匹配的目录
+    # Direct match
     matched_dir = os.path.join(MODELS_DIR, model_identifier)
 
     if not os.path.exists(matched_dir):
-        # 尝试不区分大小写匹配
+        # Try case-insensitive match
         matched_dir = None
         for name in os.listdir(MODELS_DIR):
             full_path = os.path.join(MODELS_DIR, name)
@@ -65,7 +65,7 @@ def find_model_files(model_identifier: str) -> dict:
 
     files = {}
 
-    # 查找模型文件
+    # Find model file
     for ext in ['*.pth', '*.keras', '*.h5']:
         matches = glob.glob(os.path.join(matched_dir, ext))
         if matches:
@@ -75,18 +75,18 @@ def find_model_files(model_identifier: str) -> dict:
     if 'model' not in files:
         raise FileNotFoundError(f"No model file in: {matched_dir}")
 
-    # 查找信息文件
+    # Find info file
     info_matches = glob.glob(os.path.join(matched_dir, '*_info.pkl'))
     if not info_matches:
         raise FileNotFoundError(f"No info file in: {matched_dir}")
     files['info'] = info_matches[0]
 
-    # 配置文件
+    # Config file
     config_path = os.path.join(matched_dir, 'config.json')
     if os.path.exists(config_path):
         files['config'] = config_path
 
-    # 标签映射器
+    # Label mapper
     mapper_path = os.path.join(RESULT_DIR, 'label_mapper.pkl')
     if os.path.exists(mapper_path):
         files['mapper'] = mapper_path
@@ -96,15 +96,15 @@ def find_model_files(model_identifier: str) -> dict:
     logger.info(f"  Info file: {os.path.basename(files['info'])}")
     return files
 
-# ==================== 2. 模型加载 ====================
+# ==================== 2. Model Loading ====================
 def load_model_resources(model_identifier: str):
-    """加载模型资源
+    """Load model resources.
     Args:
-        model_identifier: 如 '1_CNN', 'C_RCL-ProtoNet'
+        model_identifier: e.g., '1_CNN', 'C_RCL-ProtoNet'
     """
     files = find_model_files(model_identifier)
 
-    # 从文件名/目录名推断 model_type
+    # Infer model_type from filename/directory name
     model_file = os.path.basename(files['model'])
     dir_name = model_identifier.lower()
     if 'cnn' in model_file.lower() or 'cnn' in dir_name:
@@ -131,7 +131,7 @@ def load_model_resources(model_identifier: str):
         with open(files['config'], 'r', encoding='utf-8') as f:
             config = json.load(f)
 
-    # 加载标签映射器
+    # Load label mapper
     mapper = GlobalLabelMapper()
     if files.get('mapper'):
         mapper.load(files['mapper'])
@@ -144,7 +144,7 @@ def load_model_resources(model_identifier: str):
             mapper.num_classes = gm.get('num_classes', 1)
             mapper.is_fitted = True
 
-    # 预处理器
+    # Preprocessor
     preprocessor = DataPreprocessor({})
     if info.get('scaler_mean') is not None:
         preprocessor.scaler = StandardScaler()
@@ -153,7 +153,7 @@ def load_model_resources(model_identifier: str):
     if info.get('selected_indices') is not None:
         preprocessor.selected_indices = np.array(info['selected_indices'])
 
-    # 创建模型
+    # Create model
     input_shape = info.get('input_shape')
     if input_shape is None:
         window_size = config.get('window_size', 128)
@@ -170,7 +170,7 @@ def load_model_resources(model_identifier: str):
 
 
 def _create_model(model_type, input_shape, num_classes, info, config=None):
-    """创建模型实例"""
+    """Create model instance."""
     if config is None:
         config = {}
     model_cfg = config.get('model', {})
@@ -210,9 +210,9 @@ def _create_model(model_type, input_shape, num_classes, info, config=None):
     raise ValueError(f"Unknown model: {model_type}")
 
 
-# ==================== 3. 数据准备 ====================
+# ==================== 3. Data Preparation ====================
 def prepare_test_data(test_source, mapper, preprocessor, config, info):
-    """准备测试数据"""
+    """Prepare test data."""
     if not os.path.exists(test_source):
         raise FileNotFoundError(f"Test data not found: {test_source}")
 
@@ -228,23 +228,23 @@ def prepare_test_data(test_source, mapper, preprocessor, config, info):
 
     logger.info(f"Loaded {len(raw_data)} files")
 
-    # 标签映射
+    # Label mapping
     for d in raw_data:
         d.raw_labels = mapper.transform(d.raw_labels)
 
-    # 过滤
+    # Filter
     valid = [d for d in raw_data if preprocessor.validate(d)]
     logger.info(f"Valid: {len(valid)} files")
 
     if not valid:
         raise ValueError("No valid data after filtering")
 
-    # 标准化
+    # Standardize
     if preprocessor.scaler:
         for d in valid:
             d.features = preprocessor.scaler.transform(d.features)
 
-    # 步骤1：特征选择
+    # Step 1: Feature selection
     selected_indices = info.get('selected_indices')
     if selected_indices is None:
         raise ValueError("No selected_indices found in model info")
@@ -253,7 +253,7 @@ def prepare_test_data(test_source, mapper, preprocessor, config, info):
     for d in valid:
         d.features = d.features[:, selected_indices]
 
-    # 步骤2：降维
+    # Step 2: Dimensionality reduction
     dim_reduction_method = info.get('dim_reduction_method')
     dr_model = info.get('dr_model')
 
@@ -274,9 +274,9 @@ def prepare_test_data(test_source, mapper, preprocessor, config, info):
     final_n_features = valid[0].features.shape[1]
     logger.info(f"Final feature dimension: {final_n_features}")
 
-    # 构建序列
+    # Build sequences
     window_size = config.get('window_size', 128)
-    stride = config.get('stride', 2)  # 注意 stride=2
+    stride = config.get('stride', 2)  # Note: stride=2
 
     builder = SequenceBuilder(
         window_size=window_size,
@@ -301,23 +301,23 @@ def prepare_test_data(test_source, mapper, preprocessor, config, info):
 
     return X_test, y_test
 
-# ==================== 4. 评估 ====================
+# ==================== 4. Evaluation ====================
 
 def evaluate(model, X_test, y_test, mapper, config, model_type, use_rejection):
-    """评估模型"""
+    """Evaluate model."""
     evaluator = ModelEvaluator(mapper)
 
-    # 获取类别名称
+    # Get class names
     num_classes = mapper.num_classes
     class_names = [mapper.name_mapping.get(i, f'Class_{i}') for i in range(num_classes)]
 
-    # 正式评估
+    # Evaluate
     metrics, y_pred = evaluator.evaluate(model, X_test, y_test)
 
-    # 创建测试结果目录
+    # Create test results directory
     test_vis_dir = get_test_save_dir(model_type)
 
-    # 1. 打印评估结果
+    # 1. Print evaluation results
     print(f"\n{'=' * 60}")
     print(f"Test Results - {model_type.upper()}")
     print(f"{'=' * 60}")
@@ -337,7 +337,7 @@ def evaluate(model, X_test, y_test, mapper, config, model_type, use_rejection):
             print(f"  {name:<25s} {m['precision']:>10.3f} {m['recall']:>10.3f} "
                   f"{m['f1-score']:>10.3f} {int(support_val):>10}")
 
-    # 2. 使用 ModelEvaluator 的方法绘制混淆矩阵
+    # 2. Plot confusion matrix using ModelEvaluator
     cm_path = os.path.join(test_vis_dir, f'confusion_matrix_test.svg')
     evaluator.plot_confusion_matrix(
         y_test, y_pred,
@@ -345,7 +345,7 @@ def evaluate(model, X_test, y_test, mapper, config, model_type, use_rejection):
         save_path=cm_path
     )
 
-    # 3. 绘制 ROC 和 PR 曲线
+    # 3. Plot ROC and PR curves
     try:
         y_proba = model.predict_proba(X_test)
         roc_path = os.path.join(test_vis_dir, f'roc_curve_test.svg')
@@ -355,7 +355,7 @@ def evaluate(model, X_test, y_test, mapper, config, model_type, use_rejection):
     except (AttributeError, NotImplementedError):
         logger.warning("Cannot plot ROC/PR curves")
 
-    # 4. 保存详细报告
+    # 4. Save detailed report
     report_txt_path = os.path.join(test_vis_dir, f'evaluation_report_test.txt')
     with open(report_txt_path, 'w', encoding='utf-8') as f:
         f.write("=" * 70 + "\n")
@@ -380,10 +380,10 @@ def evaluate(model, X_test, y_test, mapper, config, model_type, use_rejection):
     logger.info(f"All test results saved to: {test_vis_dir}")
     return results
 
-# ==================== 5. 工具函数 ====================
+# ==================== 5. Utilities ====================
 
 def list_models():
-    """列出所有可用模型"""
+    """List all available models."""
     if not os.path.exists(MODELS_DIR):
         return []
 
@@ -398,13 +398,13 @@ def list_models():
                 available.append(name)
     return available
 
-# ==================== 主函数 ====================
+# ==================== Main ====================
 def run_test(model_identifier: str, test_data: str = None, use_rejection: bool = True):
-    """测试单个模型"""
-    global current_test_data  # 用于在 evaluate 中访问
+    """Test a single model."""
+    global current_test_data  # used in evaluate()
 
     if test_data is None:
-        # 自动找第一个 TestCase 目录
+        # Auto-select first TestCase directory
         data_dir = str(PROJECT_ROOT / 'data')
         test_dirs = sorted([
             os.path.join(data_dir, d)
@@ -418,7 +418,7 @@ def run_test(model_identifier: str, test_data: str = None, use_rejection: bool =
             raise FileNotFoundError(f"No TestCase directory found in: {data_dir}")
 
     logger.info(f"Test data: {test_data}")
-    current_test_data = test_data  # 存储供 evaluate 使用
+    current_test_data = test_data  # store for evaluate()
 
     model, info, config, mapper, preprocessor, model_type = load_model_resources(model_identifier)
     X_test, y_test = prepare_test_data(test_data, mapper, preprocessor, config, info)
